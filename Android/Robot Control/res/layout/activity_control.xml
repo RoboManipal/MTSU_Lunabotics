@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000"
+    android:gravity="right"
+    android:orientation="horizontal"
+    android:keepScreenOn="true" >
+
+    <SurfaceView
+        android:id="@+id/cameraSurface"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="0.62" />
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical" >
+
+        <Button
+            android:id="@+id/btn_cameraControl"
+            android:layout_width="124dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:layout_marginBottom="20dp"
+            android:height="50dp"
+            android:text="Camera"
+            android:textOff="@string/camera_control"
+            android:textOn="@string/camera_control" />
+
+        <Button
+            android:id="@+id/btn_robotControl"
+            android:layout_width="124dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:layout_marginBottom="20dp"
+            android:height="50dp"
+            android:text="Drive"
+            android:textOff="@string/robot_control"
+            android:textOn="@string/robot_control" />
+
+        <ToggleButton
+            android:id="@+id/btn_autonomy"
+            android:layout_width="124dp"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="20dp"
+            android:enabled="false"
+            android:height="50dp"
+            android:textOff="@string/btn_autonomy"
+            android:textOn="@string/btn_autonomy" />
+
+        <ToggleButton
+            android:id="@+id/btn_lights"
+            android:layout_width="124dp"
+            android:layout_height="wrap_content"
+            android:height="50dp"
+            android:textOff="@string/lights_off"
+            android:textOn="@string/lights_on" />
+
+        <TextView
+            android:id="@+id/txt_temp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:layout_marginLeft="5dp"
+         />
+
+    </LinearLayout>
+
+</LinearLayout>

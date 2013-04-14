@@ -1,0 +1,30 @@
+<PreferenceScreen
+        xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <PreferenceCategory
+            android:title="Robot Connection Settings">
+
+        <EditTextPreference
+                android:key="prefIpAddress"
+                android:title="Camera IP Address"
+                android:dialogTitle="Camera IP Address" />
+        <EditTextPreference
+                android:key="prefCameraPort"
+                android:title="MJPEG Streaming Port"
+                android:dialogTitle="MJPEG Streaming Port" />
+        <EditTextPreference
+                android:key="prefCameraPath"
+                android:title="MJPEG Streaming Path"
+                android:dialogTitle="MJPEG Streaming Path" />
+        <EditTextPreference
+            	android:key="prefWebSocketIpAddress"
+            	android:title="WebSocket IP Address"
+            	android:dialogTitle="WebSocket IP Address" />
+        <EditTextPreference
+                android:key="prefWebSocketPort"
+                android:title="WebSocket Connection Port"
+                android:dialogTitle="WebSocket Connection Port" />
+
+    </PreferenceCategory>
+
+</PreferenceScreen>
