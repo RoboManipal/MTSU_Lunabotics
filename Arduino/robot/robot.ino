@@ -21,11 +21,7 @@
 //Environment
 #define SERIAL_BAUD 115200
 
-//Constants
-#define CENTER 90
-
 //Digital Pins
-#define DEBUG_PIN    2
 #define MOTOR_L      3
 #define MOTOR_R      5
 #define MOTOR_S_PAN  6
@@ -40,39 +36,29 @@
 #define I2C_SDA      4
 #define I2C_SCL      5
 
-//Message States
-#define LEDS_ON            0
-#define LEDS_OFF           1
-
-#define DRIVE_LEFT         2
-#define DRIVE_FRONTLEFT    3
-#define DRIVE_FRONT        4
-#define DRIVE_FRONTRIGHT   5
-#define DRIVE_RIGHT        6
-#define DRIVE_BACKRIGHT    7
-#define DRIVE_BACK         8
-#define DRIVE_BACKLEFT     9
-#define DRIVE_STOP         10
-
-#define CAMERA_LEFT        12
-#define CAMERA_UPLEFT      13
-#define CAMERA_UP          14
-#define CAMERA_UPRIGHT     15
-#define CAMERA_RIGHT       16
-#define CAMERA_DOWNRIGHT   17
-#define CAMERA_DOWN        18
-#define CAMERA_DOWNLEFT    19
-#define CAMERA_STOP        20
-
-#define AUTONOMY_ON        22
-#define AUTONOMY_OFF       23
-
-//Global States
-bool autonomyEnabled = false;
-int  defaultSpeed    = 100;
-int  cameraState     = CAMERA_STOP;
-bool panRight        = false;       //Used to decide sweep direction of sensor panner
-byte serialInput;
+//Serial Messages
+#define STOP_ALL          1
+#define LEDS_ON           2
+#define LEDS_OFF          3
+#define AUTONOMY_ON       4
+#define AUTONOMY_OFF      5
+#define DRIVE_LEFT        10
+#define DRIVE_RIGHT       11
+#define DRIVE_FORWARD     12
+#define DRIVE_BACKWARD    13
+#define DRIVE_FRONT_LEFT  14
+#define DRIVE_FRONT_RIGHT 15
+#define DRIVE_STOP        16
+#define CAMERA_LEFT       20
+#define CAMERA_RIGHT      21
+#define CAMERA_UP         22
+#define CAMERA_DOWN       23
+#define CAMERA_PAN_STOP   24
+#define CAMERA_TILT_STOP  25
+#define CAMERA_STOP       26
+#define CAMERA_DIRECT     29
+#define DEBUG             50
+#define DEBUG_END         55
 
 //Servos
 Servo motorL;
@@ -81,6 +67,34 @@ Servo motorCPan;
 Servo motorCTilt;
 Servo motorSPan;
 
+enum State {
+    STOP,
+    LEFT,
+    RIGHT,
+    FORWARD,
+    BACKWARD,
+    UP,
+    DOWN
+};
+
+struct Component {
+    bool  enabled;
+    State y;      //Pan/Turn
+    State x;      //Tilt/Forward/Backward
+    int   panPosition;
+    int   tiltPosition;
+};
+
+//States
+bool      autonomyEnabled;  //Enable autonomy
+bool      debugEnabled;     //Enable debug mode
+bool      panRight;         //State for sensor panner
+int       loopCount;        //Counts the number of loops processed
+int       motorSPanState;   //Position of Sensor Panner Servo
+Component camera;           //Stores camera servo states
+Component drive;            //Stores drive system states
+
+//Arduino Setup Function
 void setup() {
     //Serial Setup
     Serial.begin(SERIAL_BAUD);             //Setup Serial
@@ -92,190 +106,194 @@ void setup() {
     
     //Servo Setup
     motorL.attach(MOTOR_L);
-    motorL.write(CENTER);
+    motorL.write(90);
     motorR.attach(MOTOR_R);
-    motorR.write(CENTER);
+    motorR.write(90);
     motorCPan.attach(MOTOR_C_PAN);
-    motorCPan.write(CENTER);
+    motorCPan.write(90);
     motorCTilt.attach(MOTOR_C_TILT);
-    motorCTilt.write(CENTER);
+    motorCTilt.write(90);
     motorSPan.attach(MOTOR_S_PAN);
-    motorSPan.write(CENTER);
+    motorSPan.write(90);
     
     //LED Setup
     pinMode(LEDS, OUTPUT);
     
-    //Test Pin
-    pinMode(DEBUG_PIN, INPUT);
+    //State Initialization
+    autonomyEnabled     = false;
+    debugEnabled        = false;
+    camera.y            = STOP;
+    camera.x            = STOP;
+    loopCount           = 0;
+    camera.panPosition  = 90;
+    camera.tiltPosition = 90;
+    motorSPanState      = 90;
 }
 
-void loop() {
-    Serial.println(pingDistance());
-    Serial.println(temperature());
-    motorSPan.write(10);
-    delay(500);
-    Serial.println(pingDistance());
-    Serial.println(temperature());
-    motorSPan.write(90);
-    delay(500);
-    Serial.println(pingDistance());
-    Serial.println(temperature());
-    motorSPan.write(170);
-    delay(500);
-    Serial.println(pingDistance());
-    Serial.println(temperature());
-    motorSPan.write(90);
-    delay(500);
-}
-
-/*
+//Control Loop
 void loop() {
     if (autonomyEnabled)
-        loop_autonomous();
-    else if (digitalRead(DEBUG_PIN) == HIGH)
-        loop_test();
+        autonomous_loop();
+    else if (debugEnabled)  //Check and see if DEBUG_PIN is HIGH
+        test_loop();
     else
-        loop_teleoperation();
+        teleoperation_loop();
+    
+    //Used for processes that shouldn't occur every time
+    loopCount++;
 }
 
-//The main control loop for Teleoperation
-void loop_teleoperation() {
-    if (Serial.available()) {
-        processCommand(Serial.parseInt());
+//Serial Processing (called between loops)
+void serialEvent() {
+    int cmd = Serial.parseInt();
+    
+    if (cmd != CAMERA_DIRECT) {      
+        processCommand(cmd);
     } else {
-        //delay(10);
-    }
-    moveSensorServo();
-    processCameraMovement();
-    if (millis() % 100 == 0) {
-       Serial.print(temperature());
+        int x = Serial.parseInt();
+        int y = Serial.parseInt();
+        
+        moveCameraTo(x, y);
     }
 }
 
-//The main control loop for Autonomy
-void loop_autonomous() {
-    if (Serial.available()) {
-        processCommand(Serial.parseInt());
-    }
-}
-
-
-//Sensor diagnostics
-void loop_test() {
-    //Serial.print("Ping Sensor:   ");
-    //Serial.println(pingDistance());
+//Test Logic
+void test_loop() {
+    //Test Sensors
+    Serial.print("Ping Sensor:   ");
+    Serial.println(pingDistance());
     Serial.print("Temperature:   ");
     Serial.println(temperature());
-    //Serial.print("IR Distance L: ");
-    //Serial.println(irDistanceL());
-    //Serial.print("IR Distance R: ");
-    //Serial.println(irDistanceR());
+    Serial.print("IR Distance L: ");
+    Serial.println(irDistanceL());
+    Serial.print("IR Distance R: ");
+    Serial.println(irDistanceR());
     
+    //Test Sensor Servo
     Serial.println("Test Sensor Servo");
-    for (int i=0; i<300; i++) {
-        moveSensorServo();
-        Serial.print(motorSPan.read());
-        Serial.print(" ");
+    for (int i=10; i<170; i++) {
+        motorSPan.write(i);
         delay(10);
     }
-    Serial.println(" ");
+    motorSPan.write(90);
     
+    //Test Drive Servos
     Serial.println("Test Left and Right Drive Servos");
     driveForward(10);
     delay(500);
     driveStop();
     
+    //Test Camera Servos
     Serial.println("Camera Pan");
     motorCPan.write(0);
     delay(500);
     motorCPan.write(180);
     delay(500);
-    motorCPan.write(CENTER);
+    motorCPan.write(90);
     
     Serial.println("Camera Tilt");
     motorCTilt.write(100);
     delay(500);
     motorCTilt.write(50);
     delay(500);
-    motorCTilt.write(CENTER);
+    motorCTilt.write(90);
     
-    ledsOn();
-    
+    //Test Light
+    PORTB = PORTB | B00100000;
     delay(500);
-    ledsOff();
-}*/
-/*
-//Process Command
-void processCommand(int input) {
-    switch (input) {
-    case DRIVE_FRONT:
-        if (!autonomyEnabled)
-            driveForward(defaultSpeed);
-        break;
-    case DRIVE_FRONTLEFT:
-        if (!autonomyEnabled)
-            driveForwardLeft(defaultSpeed);
-        break;
-    case DRIVE_FRONTRIGHT:
-        if (!autonomyEnabled)
-            driveForwardRight(defaultSpeed);
-        break;
-    case DRIVE_BACK:
-        if (!autonomyEnabled)
-            driveBackward(defaultSpeed);
-        break;
-    case DRIVE_BACKLEFT:
-        if (!autonomyEnabled)
-            driveBackwardRight(defaultSpeed);
-        break;
-    case DRIVE_BACKRIGHT:
-        if (!autonomyEnabled)
-            driveBackwardRight(defaultSpeed);
-        break;
+    PORTB = PORTB & B11011111;
+}
+
+//Autonomous Logic
+void autonomous_loop() {
+
+}
+
+/**************************
+ *   Teleoperation Code   *
+ **************************/
+ 
+//Teleoperation Logic
+void teleoperation_loop() {    
+    //Processing
+    processTemperature();
+    processCameraMovement();
+    processSensorPan();
+    
+    //Drive motors 'remember' their state, so no updating is needed
+    
+    delay(15);
+}
+
+/*********************
+ *   Control Code    *
+ *********************/
+ 
+//Process Serial Commands
+void processCommand(int command) {
+    switch (command) {
     case DRIVE_LEFT:
-        if (!autonomyEnabled)
-            driveLeft(defaultSpeed);
+        drive.x = STOP;
+        drive.y = LEFT;
+        executeDrive();
         break;
     case DRIVE_RIGHT:
-        if (!autonomyEnabled)
-            driveRight(defaultSpeed);
+        drive.x = STOP;
+        drive.y = RIGHT;
+        executeDrive();
+        break;
+    case DRIVE_FORWARD:
+        drive.x = FORWARD;
+        drive.y = STOP;
+        executeDrive();
+        break;
+    case DRIVE_BACKWARD:
+        drive.x = BACKWARD;
+        drive.y = STOP;
+        executeDrive();
+        break;
+    case DRIVE_FRONT_LEFT:
+        drive.x = FORWARD;
+        drive.y = LEFT;
+        executeDrive();
+        break;
+    case DRIVE_FRONT_RIGHT:
+        drive.x = FORWARD;
+        drive.y = RIGHT;
+        executeDrive();
         break;
     case DRIVE_STOP:
-        if (!autonomyEnabled)
-            driveStop();
+        drive.x = STOP;
+        drive.y = STOP;
+        executeDrive();
         break;
-    case CAMERA_UP:
-        cameraState = CAMERA_UP;
-        break;
-    case CAMERA_UPLEFT:
-        cameraState = CAMERA_UPLEFT;
-        break;
-    case CAMERA_UPRIGHT:
-        cameraState = CAMERA_UPRIGHT;
-        break;
-    case CAMERA_DOWN:
-        cameraState = CAMERA_DOWN;
-        break;
-    case CAMERA_DOWNLEFT:
-        cameraState = CAMERA_DOWNLEFT;
-        break;
-    case CAMERA_DOWNRIGHT:
-    	cameraState = CAMERA_DOWNRIGHT;
-    	break;
     case CAMERA_LEFT:
-        cameraState = CAMERA_LEFT;
+        camera.y = LEFT;
         break;
     case CAMERA_RIGHT:
-        cameraState = CAMERA_RIGHT;
+        camera.y = RIGHT;
+        break;
+    case CAMERA_UP:
+        camera.x = UP;
+        break;
+    case CAMERA_DOWN:
+        camera.x = DOWN;
+        break;
+    case CAMERA_PAN_STOP:
+        camera.y = STOP;
+        break;
+    case CAMERA_TILT_STOP:
+        camera.x = STOP;
         break;
     case CAMERA_STOP:
-        cameraState = CAMERA_STOP;
+        camera.x = STOP;
+        camera.y = STOP;
         break;
     case LEDS_ON:
-        ledsOn();
+        PORTB = PORTB | B00100000;
         break;
     case LEDS_OFF:
-        ledsOff();
+        PORTB = PORTB & B11011111;
         break;
     case AUTONOMY_ON:
         autonomyEnabled = true;
@@ -283,9 +301,160 @@ void processCommand(int input) {
     case AUTONOMY_OFF:
         autonomyEnabled = false;
         break;
+    case STOP_ALL:
+        camera.x = STOP;
+        camera.y = STOP;
+        //driveStop();
+        PORTB = PORTB & B11011111; //Disable LEDS
+        autonomyEnabled = false;
+        break;
+    case DEBUG:
+        debugEnabled = true;
+        break;
+    case DEBUG_END:
+        debugEnabled = false;
+        break;
     }
 }
-*/
+
+
+//Process Camera Movement
+void processCameraMovement() {
+    if (camera.y == LEFT) {            
+        if (!(camera.panPosition <= 10)) {
+            motorCPan.write(--camera.panPosition);
+        }
+	} else if (camera.y == RIGHT) {
+		if (!(camera.panPosition >= 170)) {
+			motorCPan.write(++camera.panPosition);
+		}
+	}
+	
+	if (camera.x == UP) {     
+		if (!(camera.tiltPosition <= 20)) {
+			motorCTilt.write(--camera.tiltPosition);
+		}
+	} else if (camera.x == DOWN) {
+		if (!(camera.tiltPosition >= 160)) {
+			motorCTilt.write(++camera.tiltPosition);
+		}
+	}
+}
+
+//Move Camera to a Specific Position
+void moveCameraTo(int x, int y) {
+    int xpos = x;
+    int ypos = y;
+    
+    if (xpos < 10) {
+       xpos = 10;
+    } else if (xpos > 170) {
+       xpos = 170;
+    }
+    
+    if (ypos < 20) {
+       ypos = 20;
+    } else if (ypos > 160) {
+       ypos = 160;
+    }
+    
+    camera.y            = STOP;
+    camera.x            = STOP;
+    camera.panPosition  = x;
+    camera.tiltPosition = y;
+
+    motorCPan.write(x);
+    motorCTilt.write(y);
+}
+
+//Send Temperature Value
+void processTemperature() {
+    if (loopCount % 20 == 0) {
+        Serial.println(temperature());
+    }
+}
+
+//Used to move the sensor servo (should be used in a loop)
+void processSensorPan() {
+    if (motorSPan.read() > 175 || motorSPan.read() < 5) {
+        panRight = !panRight;
+    }
+    
+    if (panRight) {
+        motorSPan.write(++motorSPanState);
+    } else {
+        motorSPan.write(--motorSPanState);
+    }
+}
+
+//Makes robot move Forwards
+void driveForward (int speed) {
+    motorL.write(-speed * 1.8);
+    motorR.write(speed * 1.8);
+}
+
+void driveForwardLeft (int speed) {
+    motorL.write(85);
+    motorR.write(180);
+}
+
+void driveForwardRight (int speed) {
+    motorL.write(0);
+    motorR.write(95);
+}
+
+//Makes robot move Backwards
+void driveBackward (int speed) {
+    motorL.write(speed * 1.8);
+    motorR.write(-speed * 1.8);
+}
+
+//Makes robot move Left
+void driveLeft (int speed) {
+    motorL.write(speed * 1.8);
+    motorR.write(speed * 1.8);
+}
+
+//Makes robot move Right
+void driveRight (int speed) {
+    motorL.write(-speed * 1.8);
+    motorR.write(-speed * 1.8);
+}
+
+//Makes robot Stop moving
+void driveStop () {
+    motorL.write(90);
+    motorR.write(90);
+}
+
+void executeDrive() {
+    if (drive.x == FORWARD && drive.y == LEFT) {
+        driveForwardLeft(100);
+    }
+    else if (drive.x == FORWARD && drive.y == RIGHT) {
+        driveForwardRight(100);
+    }
+    else if (drive.x == FORWARD && drive.y == STOP) {
+        driveForward(100);
+    }
+    else if (drive.x == BACKWARD) {
+        driveBackward(100);
+    }
+    else if (drive.y == LEFT && drive.x == STOP) {
+        driveLeft(100);
+    }
+    else if (drive.y == RIGHT && drive.x == STOP) {
+        driveRight(100);
+    }
+    else if (drive.x == STOP && drive.y == STOP) {
+        driveStop();
+    }
+}
+
+/********************
+ *   Sensor Code    *
+ ********************/
+
 //Reads and returns the temperature from the IR Sensor
 float temperature() {
     int dev       = 0x5A<<1;
@@ -350,113 +519,4 @@ float irDistanceL() {
 //Distance in cm from Right IR Sensor
 float irDistanceR() {
     return 65 * pow(analogRead(SENSOR_IR_R) * 0.0048828125 , -1.10);
-}
-
-//Makes robot move Forwards
-void driveForward (int speed) {
-    motorL.write(-speed * 1.8);
-    motorR.write(speed * 1.8);
-}
-
-void driveForwardLeft (int speed) {
-    motorL.write(-speed);
-    motorR.write(speed * 1.8);
-}
-
-void driveForwardRight (int speed) {
-    motorL.write(-speed * 1.8);
-    motorR.write(speed);
-}
-
-//Makes robot move Backwards
-void driveBackward (int speed) {
-    motorL.write(speed * 1.8);
-    motorR.write(-speed * 1.8);
-}
-
-void driveBackwardLeft (int speed) {
-    motorL.write(speed);
-    motorR.write(-speed * 1.8);
-}
-
-void driveBackwardRight (int speed) {
-    motorL.write(speed * 1.8);
-    motorR.write(-speed);
-}
-
-//Makes robot move Left
-void driveLeft (int speed) {
-    motorL.write(speed * 1.8);
-    motorR.write(speed * 1.8);
-}
-
-//Makes robot move Right
-void driveRight (int speed) {
-    motorL.write(-speed * 1.8);
-    motorR.write(-speed * 1.8);
-}
-
-//Makes robot Stop moving
-void driveStop () {
-    motorL.write(CENTER);
-    motorR.write(CENTER);
-}
-
-//A task for executing camera movements
-void processCameraMovement() {
-    switch(cameraState) {
-    case CAMERA_UP:
-        motorCTilt.write(motorCTilt.read() - 1);
-        break;
-    case CAMERA_UPLEFT:
-        motorCTilt.write(motorCTilt.read() - 1);
-        motorCPan.write(motorCPan.read() - 1);
-        break;
-    case CAMERA_UPRIGHT:
-        motorCTilt.write(motorCTilt.read() - 1);
-        motorCPan.write(motorCPan.read() + 1);
-        break;
-    case CAMERA_DOWN:
-        motorCTilt.write(motorCTilt.read() + 1);
-        break;
-    case CAMERA_DOWNLEFT:
-        motorCTilt.write(motorCTilt.read() + 1);
-        motorCPan.write(motorCPan.read() - 1);
-        break;
-    case CAMERA_DOWNRIGHT:
-        motorCTilt.write(motorCTilt.read() + 1);
-        motorCPan.write(motorCPan.read() + 1);
-        break;
-    case CAMERA_LEFT:
-        motorCPan.write(motorCPan.read() - 1);
-        break;
-    case CAMERA_RIGHT:
-        motorCPan.write(motorCPan.read() + 1);
-        break;
-    }
-    
-    delay(18);
-}
-
-//LEDs On
-void ledsOn() {
-    digitalWrite(LEDS, HIGH);
-}
-
-//LEDs Off
-void ledsOff() {
-    digitalWrite(LEDS, LOW);
-}
-
-//Used to move the sensor servo (should be used in a loop)
-void moveSensorServo() {
-    if (motorSPan.read() > 175 || motorSPan.read() < 5) {
-        panRight = !panRight;
-    }
-    
-    if (panRight) {
-        motorSPan.write(motorSPan.read() + 1);
-    } else {
-        motorSPan.write(motorSPan.read() - 1);
-    }
 }
