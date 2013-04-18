@@ -1,6 +1,4 @@
-ureca-robot
-===========
+Radier Robotics
+===============
 
-Copyright 2013 Cody Hazelwood.  All Rights Reserved.
-
-Upon completion, code will be released.
+Middle Tennessee State University Radier Robotics Team Code
