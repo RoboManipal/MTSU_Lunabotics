@@ -135,6 +135,11 @@ serial_arduino.on('open', function() {
             clients.splice(clientNumber, 1);
             log('Client disconnected');
             log('Current number of clients: ' + (clients.length));
+            
+            //If there are no control clients connected, stop moving
+            if (clients.length < 1) {
+                globalStop();
+            }
         });
     
         //WebSocket Message Received
